@@ -460,11 +460,14 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	postIDs := []int{}
-	err = db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
-	if err != nil {
-		log.Print(err)
-		return
+	for _, post := range posts {
+		postIDs = append(postIDs, post.ID)
 	}
+	// err = db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
 	postCount := len(postIDs)
 
 	commentedCount := 0
