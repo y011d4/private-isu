@@ -391,7 +391,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	// err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` FORCE INDEX(`created_at_idx`) ORDER BY `created_at` DESC LIMIT 20")
 	// err := db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20")
-	err := db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.id AS `user.id`, u.account_name AS `user.account_name`, u.passhash AS `user.passhash`, u.authority AS `user.authority`, u.del_flg AS `user.del_flg`, u.created_at AS `user.created_at` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20")
+	err := db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20")
 
 	if err != nil {
 		log.Print(err)
@@ -439,7 +439,7 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	results := []Post{}
 
 	// err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
-	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.id AS `user.id`, u.account_name AS `user.account_name`, u.passhash AS `user.passhash`, u.authority AS `user.authority`, u.del_flg AS `user.del_flg`, u.created_at AS `user.created_at` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE user_id = ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", user.ID)
+	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE user_id = ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", user.ID)
 	if err != nil {
 		log.Print(err)
 		return
@@ -528,7 +528,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 	// err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601Format))
-	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.id AS `user.id`, u.account_name AS `user.account_name`, u.passhash AS `user.passhash`, u.authority AS `user.authority`, u.del_flg AS `user.del_flg`, u.created_at AS `user.created_at` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE p.created_at <= ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", t.Format(ISO8601Format))
+	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE p.created_at <= ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", t.Format(ISO8601Format))
 	if err != nil {
 		log.Print(err)
 		return
@@ -565,7 +565,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 	// err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `id` = ? ", pid)
-	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.id AS `user.id`, u.account_name AS `user.account_name`, u.passhash AS `user.passhash`, u.authority AS `user.authority`, u.del_flg AS `user.del_flg`, u.created_at AS `user.created_at` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE p.id = ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", pid)
+	err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM `posts` p FORCE INDEX(`created_at_idx`) JOIN `users` u ON p.user_id=u.id WHERE p.id = ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", pid)
 	if err != nil {
 		log.Print(err)
 		return
