@@ -704,6 +704,14 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 
 	ext := pat.Param(r, "ext")
 
+	fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	defer fp.Close()
+	fp.Write(post.Imgdata)
+
 	if ext == "jpg" && post.Mime == "image/jpeg" ||
 		ext == "png" && post.Mime == "image/png" ||
 		ext == "gif" && post.Mime == "image/gif" {
