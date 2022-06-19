@@ -337,7 +337,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 func imageURL(p Post) string {
 	ext := ""
 	if p.Mime == "image/jpeg" {
-		ext = ".jpg"
+		ext = ".jpeg"
 	} else if p.Mime == "image/png" {
 		ext = ".png"
 	} else if p.Mime == "image/gif" {
@@ -745,7 +745,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		filedata,
+		"placeholder",
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -778,7 +778,7 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	post := Post{}
-	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	err = db.Get(&post, "SELECT id, user_id, body, mime, created_at FROM `posts` WHERE `id` = ?", pid)
 	if err != nil {
 		log.Print(err)
 		return
@@ -786,13 +786,20 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 
 	ext := pat.Param(r, "ext")
 
-	fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
+	// fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	// defer fp.Close()
+	// fp.Write(post.Imgdata)
+	fp, err := os.Open(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
 	if err != nil {
 		log.Print(err)
 		return
 	}
 	defer fp.Close()
-	fp.Write(post.Imgdata)
+	fp.Read(post.Imgdata)
 
 	if ext == "jpg" && post.Mime == "image/jpeg" ||
 		ext == "png" && post.Mime == "image/png" ||
@@ -959,6 +966,30 @@ func main() {
 		log.Fatalf("Failed to connect to DB: %s.", err.Error())
 	}
 	defer db.Close()
+
+	/*
+		posts := []Post{}
+		db.Select(&posts, "SELECT `id`, `imgdata`, `mime` FROM `posts` WHERE `id` <= 10000")
+		for _, post := range posts {
+			var ext string
+			if post.Mime == "image/jpeg" {
+				ext = "jpeg"
+			} else if post.Mime == "image/png" {
+				ext = "png"
+			} else if post.Mime == "image/gif" {
+				ext = "gif"
+			} else {
+				log.Print(post)
+			}
+			fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", post.ID, ext))
+			if err != nil {
+				log.Print(err)
+				return
+			}
+			fp.Write(post.Imgdata)
+			fp.Close()
+		}
+	*/
 
 	mux := goji.NewMux()
 
