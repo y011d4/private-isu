@@ -763,8 +763,8 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	defer fp.Close()
 	fp.Write(filedata)
+	fp.Close()
 
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
@@ -798,8 +798,8 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	defer fp.Close()
 	fp.Read(post.Imgdata)
+	fp.Close()
 
 	if ext == "jpg" && post.Mime == "image/jpeg" ||
 		ext == "png" && post.Mime == "image/png" ||
