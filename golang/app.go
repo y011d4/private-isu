@@ -23,7 +23,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
-	"github.com/pkg/profile"
+	// "github.com/pkg/profile"
 	goji "goji.io"
 	"goji.io/pat"
 	"goji.io/pattern"
@@ -896,6 +896,7 @@ func (reg *RegexpPattern) Match(r *http.Request) *http.Request {
 }
 
 func main() {
+	// defer profile.Start(profile.ProfilePath("/home/isucon/profile")).Stop()
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
 		host = "localhost"
