@@ -5,6 +5,8 @@ DROP INDEX `post_id_created_at_idx` ON `comments`;
 CREATE INDEX `post_id_created_at_idx` ON `comments`(`post_id`, `created_at` DESC);
 DROP INDEX `created_at_idx` ON `posts`;
 CREATE INDEX `created_at_idx` ON `posts`(`created_at` DESC);
+DROP INDEX `user_id_created_at_idx` ON `posts`;
+CREATE INDEX `user_id_created_at_idx` ON `posts`(`user_id`, `created_at` DESC);
 DROP INDEX `user_id_idx` ON `comments`;
 CREATE INDEX `user_id_idx` ON `comments`(`user_id`);
 
