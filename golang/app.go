@@ -861,6 +861,8 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
+	memcacheClient.Delete(fmt.Sprintf("comments.%d.%t", postID, false))
+	memcacheClient.Delete(fmt.Sprintf("comments.%d.%t", postID, true))
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
