@@ -9,6 +9,9 @@ DROP INDEX `user_id_created_at_idx` ON `posts`;
 CREATE INDEX `user_id_created_at_idx` ON `posts`(`user_id`, `created_at` DESC);
 DROP INDEX `user_id_idx` ON `comments`;
 CREATE INDEX `user_id_idx` ON `comments`(`user_id`);
+ALTER TABLE users ADD n_post int NOT NULL;
+ALTER TABLE users ADD n_comment int NOT NULL;
+ALTER TABLE users ADD n_commented int NOT NULL;
 
 -- DROP TABLE IF EXISTS `posts`;
 -- CREATE TABLE `posts` (

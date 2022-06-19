@@ -49,6 +49,9 @@ type User struct {
 	Authority   int       `db:"authority" json:"authority"`
 	DelFlg      int       `db:"del_flg" json:"del_flg"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	NPost       int       `db:"n_post" json:"n_post"`
+	NComment    int       `db:"n_comment" json:"n_comment"`
+	NCommented  int       `db:"n_commented" json:"n_commented"`
 }
 
 type Post struct {
@@ -133,6 +136,55 @@ func dbInitialize() {
 
 	for _, sql := range sqls {
 		db.Exec(sql)
+	}
+
+	users := []User{}
+	db.Select(&users, "SELECT * FROM users")
+	for _, user := range users {
+		commentCount := 0
+		err := db.Get(&commentCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?", user.ID)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+
+		posts := []Post{}
+		err = db.Select(&posts, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at` FROM `posts` p WHERE user_id = ? ORDER BY `created_at` DESC LIMIT 20", user.ID)
+
+		postIDs := []int{}
+		err = db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		postCount := len(postIDs)
+
+		commentedCount := 0
+		if postCount > 0 {
+			s := []string{}
+			for range postIDs {
+				s = append(s, "?")
+			}
+			placeholder := strings.Join(s, ", ")
+
+			// convert []int -> []interface{}
+			args := make([]interface{}, len(postIDs))
+			for i, v := range postIDs {
+				args[i] = v
+			}
+
+			err = db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
+			if err != nil {
+				log.Print(err)
+				return
+			}
+		}
+		query := "UPDATE users SET n_comment = ? WHERE id = ?"
+		_, err = db.Exec(query, commentCount, user.ID)
+		query = "UPDATE users SET n_commented = ? WHERE id = ?"
+		_, err = db.Exec(query, commentedCount, user.ID)
+		query = "UPDATE users SET n_post = ? WHERE id = ?"
+		_, err = db.Exec(query, postCount, user.ID)
 	}
 }
 
@@ -533,8 +585,6 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	results := []Post{}
 
 	if user.DelFlg == 0 {
-		// err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
-		// err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM `posts` p JOIN `users` u ON p.user_id=u.id WHERE user_id = ? AND u.del_flg=0 ORDER BY `created_at` DESC LIMIT 20", user.ID)
 		err = db.Select(&results, "SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at` FROM `posts` p WHERE user_id = ? ORDER BY `created_at` DESC LIMIT 20", user.ID)
 		for _, post := range results {
 			post.User = user
@@ -551,45 +601,6 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commentCount := 0
-	err = db.Get(&commentCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?", user.ID)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	postIDs := []int{}
-	for _, post := range posts {
-		postIDs = append(postIDs, post.ID)
-	}
-	// err = db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
-	// if err != nil {
-	// 	log.Print(err)
-	// 	return
-	// }
-	postCount := len(postIDs)
-
-	commentedCount := 0
-	if postCount > 0 {
-		s := []string{}
-		for range postIDs {
-			s = append(s, "?")
-		}
-		placeholder := strings.Join(s, ", ")
-
-		// convert []int -> []interface{}
-		args := make([]interface{}, len(postIDs))
-		for i, v := range postIDs {
-			args[i] = v
-		}
-
-		err = db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
-		if err != nil {
-			log.Print(err)
-			return
-		}
-	}
-
 	me := getSessionUser(r)
 
 	templates["getAccountName"].ExecuteTemplate(w, "layout.html", struct {
@@ -599,7 +610,7 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 		CommentCount   int
 		CommentedCount int
 		Me             User
-	}{posts, user, postCount, commentCount, commentedCount, me})
+	}{posts, user, user.NPost, user.NComment, user.NCommented, me})
 }
 
 func getPosts(w http.ResponseWriter, r *http.Request) {
@@ -740,13 +751,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)"
+	query := "UPDATE users SET n_post = n_post+1 WHERE id = ?; INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?);"
 	result, err := db.Exec(
 		query,
 		me.ID,
-		mime,
-		"placeholder",
-		r.FormValue("body"),
+		me.ID, mime, "placeholder", r.FormValue("body"),
 	)
 	if err != nil {
 		log.Print(err)
@@ -834,8 +843,20 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	var commentedUserID int
+	err = db.Get(&commentedUserID, "SELECT user_id FROM posts WHERE id = ?", postID)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?); UPDATE users SET n_comment = n_comment+1 WHERE id = ?; UPDATE users SET n_commented = n_commented+1 WHERE id = ?;"
+	_, err = db.Exec(
+		query,
+		postID, me.ID, r.FormValue("comment"),
+		me.ID,
+		commentedUserID,
+	)
 	if err != nil {
 		log.Print(err)
 		return
@@ -953,7 +974,7 @@ func main() {
 
 	dsn := fmt.Sprintf(
 		// "%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
-		"%s:%s@unix(/var/run/mysqld/mysqld.sock)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
+		"%s:%s@unix(/var/run/mysqld/mysqld.sock)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true&multiStatements=true",
 		user,
 		password,
 		// host,
