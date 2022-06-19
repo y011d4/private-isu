@@ -214,9 +214,15 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
-	for _, p := range results {
-		countKey := fmt.Sprintf("count.%d", p.ID)
-		countItem, err := memcacheClient.Get(countKey)
+	// count を p.CommentCount に代入
+	countKeys := make([]string, len(results))
+	for i, p := range results {
+		countKeys[i] = fmt.Sprintf("count.%d", p.ID)
+	}
+	countItems, _ := memcacheClient.GetMulti(countKeys)
+	for i, countKey := range countKeys {
+		countItem := countItems[countKey]
+		p := results[i]
 		if countItem == nil {
 			err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
 			if err != nil {
@@ -232,16 +238,25 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 				return nil, err
 			}
 		}
+	}
 
-		commentsKey := fmt.Sprintf("comments.%d.%t", p.ID, allComments)
-		commentsItem, err := memcacheClient.Get(commentsKey)
-		var comments []Comment
+	// comments を comments_list に代入
+	commentsKeys := make([]string, len(results))
+	for i, p := range results {
+		commentsKeys[i] = fmt.Sprintf("comments.%d.%t", p.ID, allComments)
+	}
+	commentsItems, _ := memcacheClient.GetMulti(commentsKeys)
+	comments_list := make([][]Comment, len(results))
+	for i, commentsKey := range commentsKeys {
+		comments := comments_list[i]
+		commentsItem, _ := commentsItems[commentsKey]
+		p := results[i]
 		if commentsItem == nil {
 			query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 			if !allComments {
 				query += " LIMIT 3"
 			}
-			err = db.Select(&comments, query, p.ID)
+			err := db.Select(&comments, query, p.ID)
 			if err != nil {
 				log.Print(err)
 				return nil, err
@@ -254,16 +269,29 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			item := memcache.Item{Key: commentsKey, Value: commentsJson, Expiration: 10}
 			memcacheClient.Set(&item)
 		} else {
-			err = json.Unmarshal(commentsItem.Value, &comments)
+			err := json.Unmarshal(commentsItem.Value, &comments)
 			if err != nil {
 				log.Print(err)
 				return nil, err
 			}
 		}
+	}
 
+	// user を comments[i].User に代入
+	userKeys := make([]string, 0)
+	for i := range results {
+		comments := comments_list[i]
 		for i := 0; i < len(comments); i++ {
 			userKey := fmt.Sprintf("user.%d", comments[i].UserID)
-			userItem, _ := memcacheClient.Get(userKey)
+			userKeys = append(userKeys, userKey)
+		}
+	}
+	userItems, _ := memcacheClient.GetMulti(userKeys)
+	for i, p := range results {
+		comments := comments_list[i]
+		for i := 0; i < len(comments); i++ {
+			userKey := fmt.Sprintf("user.%d", comments[i].UserID)
+			userItem := userItems[userKey]
 			if userItem == nil {
 				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
 				if err != nil {
@@ -278,7 +306,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 				item := memcache.Item{Key: userKey, Value: jsonUser, Expiration: 10}
 				memcacheClient.Set(&item)
 			} else {
-				err = json.Unmarshal(userItem.Value, &comments[i].User)
+				err := json.Unmarshal(userItem.Value, &comments[i].User)
 				if err != nil {
 					log.Print(err)
 					return nil, err
