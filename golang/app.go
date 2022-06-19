@@ -510,7 +510,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `users` (`account_name`, `passhash`) VALUES (?,?)"
+	query := "INSERT INTO `users` (`account_name`, `passhash`, `n_post`, `n_comment`, `n_commented`) VALUES (?,?,0,0,0)"
 	result, err := db.Exec(query, accountName, calculatePasshash(accountName, password))
 	if err != nil {
 		log.Print(err)
