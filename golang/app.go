@@ -228,9 +228,27 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
+			userKey := fmt.Sprintf("user.%d", comments[i].UserID)
+			userItem, _ := memcacheClient.Get(userKey)
+			if userItem == nil {
+				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+				jsonUser, err := json.Marshal(comments[i].User)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+				item := memcache.Item{Key: userKey, Value: jsonUser, Expiration: 10}
+				memcacheClient.Set(&item)
+			} else {
+				err = json.Unmarshal(userItem.Value, &comments[i].User)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
 			}
 		}
 
