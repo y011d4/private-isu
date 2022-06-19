@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	crand "crypto/rand"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -40,34 +41,34 @@ const (
 )
 
 type User struct {
-	ID          int       `db:"id"`
-	AccountName string    `db:"account_name"`
-	Passhash    string    `db:"passhash"`
-	Authority   int       `db:"authority"`
-	DelFlg      int       `db:"del_flg"`
-	CreatedAt   time.Time `db:"created_at"`
+	ID          int       `db:"id" json:"id"`
+	AccountName string    `db:"account_name" json:"account_name"`
+	Passhash    string    `db:"passhash" json:"passhash"`
+	Authority   int       `db:"authority" json:"authority"`
+	DelFlg      int       `db:"del_flg" json:"del_flg"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 }
 
 type Post struct {
-	ID           int       `db:"id"`
-	UserID       int       `db:"user_id"`
-	Imgdata      []byte    `db:"imgdata"`
-	Body         string    `db:"body"`
-	Mime         string    `db:"mime"`
-	CreatedAt    time.Time `db:"created_at"`
+	ID           int       `db:"id" json:"id"`
+	UserID       int       `db:"user_id" json:"user_id"`
+	Imgdata      []byte    `db:"imgdata" json:"imgdata"`
+	Body         string    `db:"body" json:"body"`
+	Mime         string    `db:"mime" json:"mime"`
+	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+	User         User      `json:"user"`
 	CommentCount int
 	Comments     []Comment
-	User         User
 	CSRFToken    string
 }
 
 type Comment struct {
-	ID        int       `db:"id"`
-	PostID    int       `db:"post_id"`
-	UserID    int       `db:"user_id"`
-	Comment   string    `db:"comment"`
-	CreatedAt time.Time `db:"created_at"`
-	User      User
+	ID        int       `db:"id" json:"id"`
+	PostID    int       `db:"post_id" json:"post_id"`
+	UserID    int       `db:"user_id" json:"user_id"`
+	Comment   string    `db:"comment" json:"comment"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	User      User      `json:"user"`
 }
 
 func init() {
@@ -198,14 +199,32 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			}
 		}
 
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
-		}
+		commentsKey := fmt.Sprintf("comments.%d.%t", p.ID, allComments)
+		commentsItem, err := memcacheClient.Get(commentsKey)
 		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
-		if err != nil {
-			return nil, err
+		if commentsItem == nil {
+			query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+			if !allComments {
+				query += " LIMIT 3"
+			}
+			err = db.Select(&comments, query, p.ID)
+			if err != nil {
+				log.Print(err)
+				return nil, err
+			}
+			commentsJson, err := json.Marshal(comments)
+			if err != nil {
+				log.Print(err)
+				return nil, err
+			}
+			item := memcache.Item{Key: commentsKey, Value: commentsJson, Expiration: 10}
+			memcacheClient.Set(&item)
+		} else {
+			err = json.Unmarshal(commentsItem.Value, &comments)
+			if err != nil {
+				log.Print(err)
+				return nil, err
+			}
 		}
 
 		for i := 0; i < len(comments); i++ {
