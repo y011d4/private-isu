@@ -248,7 +248,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	commentsItems, _ := memcacheClient.GetMulti(commentsKeys)
 	comments_list := make([][]Comment, len(results))
 	for i, commentsKey := range commentsKeys {
-		comments := comments_list[i]
+		// comments := comments_list[i]
 		commentsItem, _ := commentsItems[commentsKey]
 		p := results[i]
 		if commentsItem == nil {
@@ -256,12 +256,12 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			if !allComments {
 				query += " LIMIT 3"
 			}
-			err := db.Select(&comments, query, p.ID)
+			err := db.Select(&comments_list[i], query, p.ID)
 			if err != nil {
 				log.Print(err)
 				return nil, err
 			}
-			commentsJson, err := json.Marshal(comments)
+			commentsJson, err := json.Marshal(comments_list[i])
 			if err != nil {
 				log.Print(err)
 				return nil, err
@@ -269,7 +269,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			item := memcache.Item{Key: commentsKey, Value: commentsJson, Expiration: 10}
 			memcacheClient.Set(&item)
 		} else {
-			err := json.Unmarshal(commentsItem.Value, &comments)
+			err := json.Unmarshal(commentsItem.Value, &comments_list[i])
 			if err != nil {
 				log.Print(err)
 				return nil, err
