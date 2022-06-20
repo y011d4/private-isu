@@ -139,6 +139,9 @@ func dbInitialize() {
 		db.Exec(sql)
 	}
 
+}
+
+func userInitialize() {
 	users := []User{}
 	db.Select(&users, "SELECT * FROM users")
 	for _, user := range users {
@@ -427,6 +430,7 @@ func getTemplPath(filename string) string {
 
 func getInitialize(w http.ResponseWriter, r *http.Request) {
 	dbInitialize()
+	userInitialize()
 	w.WriteHeader(http.StatusOK)
 }
 
