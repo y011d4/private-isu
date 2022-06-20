@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	// _ "net/http/pprof"
 	"net/url"
 	"os"
 	"path"
@@ -951,6 +952,9 @@ func (reg *RegexpPattern) Match(r *http.Request) *http.Request {
 }
 
 func main() {
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
+	// }()
 	// defer profile.Start(profile.ProfilePath("/home/isucon/profile")).Stop()
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
