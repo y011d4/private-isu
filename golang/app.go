@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -35,6 +36,7 @@ var (
 	store          *gsm.MemcacheStore
 	memcacheClient *memcache.Client
 	templates      map[string]*template.Template
+	userCache      sync.Map
 )
 
 const (
@@ -200,6 +202,7 @@ func tryLogin(accountName, password string) *User {
 	}
 
 	if calculatePasshash(u.AccountName, password) == u.Passhash {
+		userCache.Store(u.ID, User{ID: u.ID, AccountName: u.AccountName, DelFlg: u.DelFlg})
 		return &u
 	} else {
 		return nil
@@ -244,12 +247,18 @@ func getSessionUser(r *http.Request) User {
 		return User{}
 	}
 
+	user, ok := userCache.Load(uid)
+	if ok {
+		return user.(User)
+	}
+
 	u := User{}
 
 	err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
 	if err != nil {
 		return User{}
 	}
+	userCache.Store(uid, u)
 
 	return u
 }
@@ -342,31 +351,20 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			userKeys = append(userKeys, userKey)
 		}
 	}
-	userItems, _ := memcacheClient.GetMulti(userKeys)
 	for i, p := range results {
 		comments := comments_list[i]
 		for i := 0; i < len(comments); i++ {
-			userKey := fmt.Sprintf("user.%d", comments[i].UserID)
-			userItem := userItems[userKey]
-			if userItem == nil {
+			u, ok := userCache.Load(comments[i].UserID)
+			if !ok {
 				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
 				if err != nil {
 					log.Print(err)
 					return nil, err
 				}
-				jsonUser, err := json.Marshal(comments[i].User)
-				if err != nil {
-					log.Print(err)
-					return nil, err
-				}
-				item := memcache.Item{Key: userKey, Value: jsonUser, Expiration: 10}
-				memcacheClient.Set(&item)
+				u := comments[i].User
+				userCache.Store(u.ID, User{ID: u.ID, AccountName: u.AccountName, DelFlg: u.DelFlg})
 			} else {
-				err := json.Unmarshal(userItem.Value, &comments[i].User)
-				if err != nil {
-					log.Print(err)
-					return nil, err
-				}
+				comments[i].User = u.(User)
 			}
 		}
 
@@ -431,6 +429,12 @@ func getTemplPath(filename string) string {
 func getInitialize(w http.ResponseWriter, r *http.Request) {
 	dbInitialize()
 	userInitialize()
+	userCache = sync.Map{}
+	users := []User{}
+	db.Select(&users, "SELECT id, account_name, delflg FROM users")
+	for _, u := range users {
+		userCache.Store(u.ID, u)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -528,9 +532,10 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	session.Values["user_id"] = uid
+	session.Values["user_id"] = int(uid)
 	session.Values["csrf_token"] = secureRandomStr(16)
 	session.Save(r, w)
+	userCache.Store(int(uid), User{ID: int(uid), AccountName: accountName, DelFlg: 0})
 
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -925,6 +930,16 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 
 	for _, id := range r.Form["uid[]"] {
 		db.Exec(query, 1, id)
+		uid, _ := strconv.Atoi(id)
+		uCache, ok := userCache.Load(uid)
+		if ok {
+			u := uCache.(User)
+			u.DelFlg = 1
+			userCache.Store(id, User{ID: uid, AccountName: u.AccountName, DelFlg: u.DelFlg})
+		} else {
+			u := uCache.(User)
+			userCache.Store(id, User{ID: uid, AccountName: u.AccountName, DelFlg: u.DelFlg})
+		}
 	}
 
 	http.Redirect(w, r, "/admin/banned", http.StatusFound)
