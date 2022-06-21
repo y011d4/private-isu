@@ -23,7 +23,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/goccy/go-json"
+	// "github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	// "github.com/pkg/profile"
@@ -38,6 +38,7 @@ var (
 	memcacheClient *memcache.Client
 	templates      map[string]*template.Template
 	userCache      sync.Map
+	commentCache   sync.Map
 )
 
 const (
@@ -280,109 +281,26 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
-	// count を p.CommentCount に代入
-	countKeys := make([]string, len(results))
+	postIDs := make([]int, len(results))
 	for i, p := range results {
-		countKeys[i] = fmt.Sprintf("count.%d", p.ID)
+		postIDs[i] = p.ID
 	}
-	countItems, _ := memcacheClient.GetMulti(countKeys)
-	for i, countKey := range countKeys {
-		countItem := countItems[countKey]
-		p := results[i]
-		if countItem == nil {
-			err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-			if err != nil {
-				return nil, err
-			}
-			item := memcache.Item{Key: countKey, Value: []byte(strconv.Itoa(p.CommentCount)), Expiration: 10}
-			memcacheClient.Set(&item)
+
+	for _, p := range results {
+		cCache, ok := commentCache.Load(int(p.ID))
+		var comments []Comment
+		if ok {
+			comments = cCache.([]Comment)
 		} else {
-			count, err := strconv.Atoi(string(countItem.Value))
-			p.CommentCount = count
-			if err != nil {
-				log.Print(err)
-				return nil, err
-			}
+			db.Select(&comments, "SELECT c.id AS `id`, c.post_id AS `post_id`, c.user_id AS `user_id`, c.comment AS `comment`, c.created_at AS `created_at`, u.account_name AS `user.account_name` FROM comments c JOIN users u ON c.user_id = u.id WHERE post_id = ? ORDER BY created_at", p.ID)
+			commentCache.Store(int(p.ID), comments)
 		}
-	}
-
-	// comments を comments_list に代入
-	commentsKeys := make([]string, len(results))
-	for i, p := range results {
-		commentsKeys[i] = fmt.Sprintf("comments.%d.%t", p.ID, allComments)
-	}
-	commentsItems, _ := memcacheClient.GetMulti(commentsKeys)
-	comments_list := make([][]Comment, len(results))
-	for i, commentsKey := range commentsKeys {
-		// comments := comments_list[i]
-		commentsItem, _ := commentsItems[commentsKey]
-		p := results[i]
-		if commentsItem == nil {
-			query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-			if !allComments {
-				query += " LIMIT 3"
-			}
-			err := db.Select(&comments_list[i], query, p.ID)
-			if err != nil {
-				log.Print(err)
-				return nil, err
-			}
-			commentsJson, err := json.Marshal(comments_list[i])
-			if err != nil {
-				log.Print(err)
-				return nil, err
-			}
-			item := memcache.Item{Key: commentsKey, Value: commentsJson, Expiration: 10}
-			memcacheClient.Set(&item)
-		} else {
-			err := json.Unmarshal(commentsItem.Value, &comments_list[i])
-			if err != nil {
-				log.Print(err)
-				return nil, err
-			}
+		p.CommentCount = len(comments)
+		if !allComments && len(comments) > 3 {
+			comments = comments[len(comments)-3:]
 		}
-	}
-
-	// user を comments[i].User に代入
-	userKeys := make([]string, 0)
-	for i := range results {
-		comments := comments_list[i]
-		for i := 0; i < len(comments); i++ {
-			userKey := fmt.Sprintf("user.%d", comments[i].UserID)
-			userKeys = append(userKeys, userKey)
-		}
-	}
-	for i, p := range results {
-		comments := comments_list[i]
-		for i := 0; i < len(comments); i++ {
-			u, ok := userCache.Load(comments[i].UserID)
-			if !ok {
-				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-				if err != nil {
-					log.Print(err)
-					return nil, err
-				}
-				u := comments[i].User
-				userCache.Store(u.ID, User{ID: u.ID, AccountName: u.AccountName, DelFlg: u.DelFlg})
-			} else {
-				comments[i].User = u.(User)
-			}
-		}
-
-		// reverse
-		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-			comments[i], comments[j] = comments[j], comments[i]
-		}
-
 		p.Comments = comments
-
-		// err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		// if err != nil {
-		// 	return nil, err
-		// }
-
 		p.CSRFToken = csrfToken
-
 		posts = append(posts, p)
 	}
 
@@ -431,10 +349,16 @@ func getInitialize(w http.ResponseWriter, r *http.Request) {
 	dbInitialize()
 	userInitialize()
 	userCache = sync.Map{}
+	commentCache = sync.Map{}
 	users := []User{}
 	db.Select(&users, "SELECT id, account_name, delflg FROM users")
 	for _, u := range users {
-		userCache.Store(u.ID, u)
+		userCache.Store(int(u.ID), u)
+	}
+	for i := 1; i <= 10000; i++ {
+		comments := []Comment{}
+		db.Select(&comments, "SELECT c.id AS `id`, c.post_id AS `post_id`, c.user_id AS `user_id`, c.comment AS `comment`, c.created_at AS `created_at`, u.account_name AS `user.account_name` FROM comments c JOIN users u ON c.user_id = u.id WHERE post_id = ? ORDER BY created_at", i)
+		commentCache.Store(int(i), comments)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -872,8 +796,7 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	memcacheClient.Delete(fmt.Sprintf("comments.%d.%t", postID, false))
-	memcacheClient.Delete(fmt.Sprintf("comments.%d.%t", postID, true))
+	commentCache.Delete(postID)
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
