@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
+	// gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 	_ "github.com/go-sql-driver/mysql"
 	// "github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
@@ -34,7 +34,7 @@ import (
 
 var (
 	db             *sqlx.DB
-	store          *gsm.MemcacheStore
+	store          *sessions.CookieStore
 	memcacheClient *memcache.Client
 	templates      map[string]*template.Template
 	userCache      sync.Map
@@ -88,7 +88,10 @@ func init() {
 	}
 	memcacheClient = memcache.New(memdAddr)
 	memcacheClient.DeleteAll()
-	store = gsm.NewMemcacheStore(memcacheClient, "iscogram_", []byte("sendagaya"))
+	// store = gsm.NewMemcacheStore(memcacheClient, "iscogram_", []byte("sendagaya"))
+	rand := make([]byte, 32)
+	crand.Read(rand)
+	store = sessions.NewCookieStore([]byte(rand))
 	fmap := template.FuncMap{
 		"imageURL": imageURL,
 	}
